@@ -306,7 +306,7 @@ export class Chunk {
      * Serialize chunk data for export with RLE + bit packing compression
      */
     serialize() {
-        // First, pack blocks into 3 bits each
+        // Pack blocks into 4 bits each (supports block IDs 0-15)
         const packed = BitPacking.pack(this.blocks);
 
         // Then apply Run-Length Encoding to the packed data
@@ -332,7 +332,7 @@ export class Chunk {
             z: this.z,
             rle: rle, // RLE compressed bit-packed data
             bp: true, // Bit-packed flag
-            v: 3 // Version 3 format (with bit packing)
+            v: 4 // Version 4 format (4-bit packing, supports 16 block types)
         };
     }
 
@@ -342,9 +342,8 @@ export class Chunk {
     static deserialize(data) {
         const chunk = new Chunk(data.x, data.y, data.z);
 
-        if (data.v === 3 && data.rle && data.bp) {
-            // Version 3: Bit-packed + RLE compressed format
-            // First, decompress RLE to get packed bytes
+        if (data.v === 4 && data.rle && data.bp) {
+            // Version 4: 4-bit packed + RLE compressed format (supports 16 block types)
             const packed = [];
             for (let i = 0; i < data.rle.length; i += 2) {
                 const byte = data.rle[i];
@@ -353,9 +352,23 @@ export class Chunk {
                     packed.push(byte);
                 }
             }
-            // Then unpack bits to get blocks
             const packedArray = new Uint8Array(packed);
             chunk.blocks = BitPacking.unpack(packedArray, Chunk.SIZE * Chunk.SIZE * Chunk.SIZE);
+        } else if (data.v === 3 && data.rle && data.bp) {
+            // Version 3: 3-bit packed + RLE compressed format (legacy, max 8 block types)
+            const packed = [];
+            for (let i = 0; i < data.rle.length; i += 2) {
+                const byte = data.rle[i];
+                const count = data.rle[i + 1];
+                for (let j = 0; j < count; j++) {
+                    packed.push(byte);
+                }
+            }
+            const packedArray = new Uint8Array(packed);
+            chunk.blocks = BitPacking.unpack3bit(
+                packedArray,
+                Chunk.SIZE * Chunk.SIZE * Chunk.SIZE
+            );
         } else if (data.v === 2 && data.rle) {
             // Version 2: RLE compressed format (old format without bit packing)
             let blockIndex = 0;

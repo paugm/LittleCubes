@@ -19,39 +19,26 @@
  */
 export class BitPacking {
     /**
-     * Pack an array of block IDs (0-7) into a bit-packed array
+     * Pack an array of block IDs (0-15) into a bit-packed array
      * @param {Uint8Array} blocks - Array of block IDs (8 bits each)
-     * @returns {Uint8Array} - Packed array (3 bits per block)
+     * @returns {Uint8Array} - Packed array (4 bits per block, 2 blocks per byte)
      */
     static pack(blocks) {
-        // Calculate output size: 3 bits per block
-        // NOTE: 3 bits restrict block IDs to the range 0-7. Adding new block types
-        // with higher IDs requires increasing the bit width to avoid data loss.
-        const bitCount = blocks.length * 3;
-        const byteCount = Math.ceil(bitCount / 8);
+        // 4 bits per block → 2 blocks per byte
+        const byteCount = Math.ceil(blocks.length / 2);
         const packed = new Uint8Array(byteCount);
 
-        let bitIndex = 0;
         for (let i = 0; i < blocks.length; i++) {
-            const blockId = blocks[i] & 0x07; // Ensure only 3 bits (0-7)
+            const blockId = blocks[i] & 0x0f; // Ensure only 4 bits (0-15)
+            const byteIndex = i >> 1; // Math.floor(i / 2)
 
-            // Calculate byte and bit position
-            const byteIndex = Math.floor(bitIndex / 8);
-            const bitOffset = bitIndex % 8;
-
-            // Pack the 3 bits
-            if (bitOffset <= 5) {
-                // Fits in current byte
-                packed[byteIndex] |= blockId << (5 - bitOffset);
+            if (i % 2 === 0) {
+                // High nibble
+                packed[byteIndex] |= blockId << 4;
             } else {
-                // Spans two bytes
-                packed[byteIndex] |= blockId >> (bitOffset - 5);
-                if (byteIndex + 1 < byteCount) {
-                    packed[byteIndex + 1] |= (blockId << (13 - bitOffset)) & 0xff;
-                }
+                // Low nibble
+                packed[byteIndex] |= blockId;
             }
-
-            bitIndex += 3;
         }
 
         return packed;
@@ -59,11 +46,35 @@ export class BitPacking {
 
     /**
      * Unpack a bit-packed array back to block IDs
-     * @param {Uint8Array} packed - Packed array (3 bits per block)
+     * @param {Uint8Array} packed - Packed array (4 bits per block, 2 blocks per byte)
      * @param {number} blockCount - Number of blocks to unpack
      * @returns {Uint8Array} - Array of block IDs (8 bits each)
      */
     static unpack(packed, blockCount) {
+        const blocks = new Uint8Array(blockCount);
+
+        for (let i = 0; i < blockCount; i++) {
+            const byteIndex = i >> 1; // Math.floor(i / 2)
+
+            if (i % 2 === 0) {
+                // High nibble
+                blocks[i] = (packed[byteIndex] >> 4) & 0x0f;
+            } else {
+                // Low nibble
+                blocks[i] = packed[byteIndex] & 0x0f;
+            }
+        }
+
+        return blocks;
+    }
+
+    /**
+     * Unpack a 3-bit packed array back to block IDs (legacy v3 format)
+     * @param {Uint8Array} packed - Packed array (3 bits per block)
+     * @param {number} blockCount - Number of blocks to unpack
+     * @returns {Uint8Array} - Array of block IDs (8 bits each)
+     */
+    static unpack3bit(packed, blockCount) {
         const blocks = new Uint8Array(blockCount);
         let bitIndex = 0;
 

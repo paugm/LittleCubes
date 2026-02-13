@@ -71,28 +71,42 @@ export class InputManager {
      * Setup all event listeners
      */
     setupEventListeners() {
+        // Store bound references for proper removal in dispose()
+        this._onKeyDown = (e) => this.onKeyDown(e);
+        this._onKeyUp = (e) => this.onKeyUp(e);
+        this._onMouseDown = (e) => this.onMouseDown(e);
+        this._onMouseUp = (e) => this.onMouseUp(e);
+        this._onMouseMove = (e) => this.onMouseMove(e);
+        this._onPointerLockChange = () => this.onPointerLockChange();
+        this._onPointerLockError = () => this.onPointerLockError();
+        this._onFullscreenChange = () => this.onFullscreenChange();
+        this._onRequestPointerLock = () => this.requestPointerLock();
+        this._onTouchStart = (e) => this.onTouchStart(e);
+        this._onTouchMove = (e) => this.onTouchMove(e);
+        this._onTouchEnd = (e) => this.onTouchEnd(e);
+
         // Keyboard events
-        document.addEventListener('keydown', (e) => this.onKeyDown(e));
-        document.addEventListener('keyup', (e) => this.onKeyUp(e));
+        document.addEventListener('keydown', this._onKeyDown);
+        document.addEventListener('keyup', this._onKeyUp);
 
         // Mouse events
-        this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
-        this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        this.canvas.addEventListener('click', () => this.requestPointerLock());
+        this.canvas.addEventListener('mousedown', this._onMouseDown);
+        this.canvas.addEventListener('mouseup', this._onMouseUp);
+        this.canvas.addEventListener('mousemove', this._onMouseMove);
+        this.canvas.addEventListener('click', this._onRequestPointerLock);
 
         // Pointer lock events
-        document.addEventListener('pointerlockchange', () => this.onPointerLockChange());
-        document.addEventListener('pointerlockerror', () => this.onPointerLockError());
+        document.addEventListener('pointerlockchange', this._onPointerLockChange);
+        document.addEventListener('pointerlockerror', this._onPointerLockError);
 
         // Fullscreen change event to handle cursor visibility
-        document.addEventListener('fullscreenchange', () => this.onFullscreenChange());
-        document.addEventListener('webkitfullscreenchange', () => this.onFullscreenChange());
+        document.addEventListener('fullscreenchange', this._onFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', this._onFullscreenChange);
 
         // Touch events (for mobile)
-        this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
-        this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
-        this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
+        this.canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+        this.canvas.addEventListener('touchmove', this._onTouchMove, { passive: false });
+        this.canvas.addEventListener('touchend', this._onTouchEnd, { passive: false });
     }
 
     /**
@@ -289,11 +303,21 @@ export class InputManager {
      * Cleanup all event listeners and resources
      */
     dispose() {
-        document.removeEventListener('keydown', this.onKeyDown);
-        document.removeEventListener('keyup', this.onKeyUp);
-        document.removeEventListener('pointerlockchange', this.onPointerLockChange);
-        document.removeEventListener('pointerlockerror', this.onPointerLockError);
-        document.removeEventListener('fullscreenchange', this.onFullscreenChange);
-        document.removeEventListener('webkitfullscreenchange', this.onFullscreenChange);
+        // Document-level listeners
+        document.removeEventListener('keydown', this._onKeyDown);
+        document.removeEventListener('keyup', this._onKeyUp);
+        document.removeEventListener('pointerlockchange', this._onPointerLockChange);
+        document.removeEventListener('pointerlockerror', this._onPointerLockError);
+        document.removeEventListener('fullscreenchange', this._onFullscreenChange);
+        document.removeEventListener('webkitfullscreenchange', this._onFullscreenChange);
+
+        // Canvas listeners
+        this.canvas.removeEventListener('mousedown', this._onMouseDown);
+        this.canvas.removeEventListener('mouseup', this._onMouseUp);
+        this.canvas.removeEventListener('mousemove', this._onMouseMove);
+        this.canvas.removeEventListener('click', this._onRequestPointerLock);
+        this.canvas.removeEventListener('touchstart', this._onTouchStart);
+        this.canvas.removeEventListener('touchmove', this._onTouchMove);
+        this.canvas.removeEventListener('touchend', this._onTouchEnd);
     }
 }

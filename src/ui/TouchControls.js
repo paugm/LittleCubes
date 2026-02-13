@@ -395,7 +395,12 @@ export class TouchControls {
         // Update camera rotation through mouse delta
         this.input.mouse.deltaX = -deltaX * this.lookSensitivity * 100;
         this.input.mouse.deltaY = -deltaY * this.lookSensitivity * 100;
+        const wasLocked = this.input.mouse.locked;
         this.input.mouse.locked = true; // Temporarily set locked to enable rotation
+        // Schedule restore after the frame processes the delta
+        requestAnimationFrame(() => {
+            this.input.mouse.locked = wasLocked;
+        });
 
         this.lookLastX = clientX;
         this.lookLastY = clientY;

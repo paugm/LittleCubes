@@ -338,7 +338,7 @@ export class World {
         return {
             seed: this.seed,
             chunks,
-            version: 3 // Save format version (with bit packing)
+            version: 4 // Save format version (4-bit packing, supports 16 block types)
         };
     }
 

@@ -372,76 +372,86 @@ export class Player {
     }
 
     /**
-     * Update raycasting to find target block
+     * Update raycasting to find target block using DDA voxel traversal
      */
     updateRaycast() {
-        // Raycast from camera center
         this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
-
-        // Voxel raycasting (step through blocks)
-        const origin = this.raycaster.ray.origin.clone();
-        const direction = this.raycaster.ray.direction.clone();
-
-        const step = 0.1;
+        const origin = this.raycaster.ray.origin;
+        const direction = this.raycaster.ray.direction;
         const maxDistance = this.raycaster.far;
 
         this.targetBlock = null;
         this.targetFace = null;
 
-        for (let t = 0; t < maxDistance; t += step) {
-            const point = origin.clone().add(direction.clone().multiplyScalar(t));
-            const blockPos = {
-                x: Math.floor(point.x),
-                y: Math.floor(point.y),
-                z: Math.floor(point.z)
-            };
+        // DDA voxel traversal
+        let x = Math.floor(origin.x);
+        let y = Math.floor(origin.y);
+        let z = Math.floor(origin.z);
 
-            const blockId = this.world.getBlock(blockPos.x, blockPos.y, blockPos.z);
+        const stepX = direction.x >= 0 ? 1 : -1;
+        const stepY = direction.y >= 0 ? 1 : -1;
+        const stepZ = direction.z >= 0 ? 1 : -1;
 
+        const tDeltaX = direction.x !== 0 ? Math.abs(1 / direction.x) : Infinity;
+        const tDeltaY = direction.y !== 0 ? Math.abs(1 / direction.y) : Infinity;
+        const tDeltaZ = direction.z !== 0 ? Math.abs(1 / direction.z) : Infinity;
+
+        let tMaxX =
+            direction.x !== 0
+                ? (stepX > 0 ? x + 1 - origin.x : origin.x - x) * tDeltaX
+                : Infinity;
+        let tMaxY =
+            direction.y !== 0
+                ? (stepY > 0 ? y + 1 - origin.y : origin.y - y) * tDeltaY
+                : Infinity;
+        let tMaxZ =
+            direction.z !== 0
+                ? (stepZ > 0 ? z + 1 - origin.z : origin.z - z) * tDeltaZ
+                : Infinity;
+
+        let t = 0;
+        while (t < maxDistance) {
+            const blockId = this.world.getBlock(x, y, z);
             if (blockId !== 0) {
-                // Found a block
-                this.targetBlock = blockPos;
-
-                // Determine which face was hit
-                const localPoint = {
-                    x: point.x - blockPos.x,
-                    y: point.y - blockPos.y,
-                    z: point.z - blockPos.z
-                };
-
-                this.targetFace = this.getBlockFace(localPoint);
+                this.targetBlock = { x, y, z };
+                this.targetFace = { x: 0, y: 0, z: 0 };
+                // Face is opposite of last step direction
+                if (
+                    tMaxX - tDeltaX <= tMaxY - tDeltaY &&
+                    tMaxX - tDeltaX <= tMaxZ - tDeltaZ
+                ) {
+                    this.targetFace.x = -stepX;
+                } else if (tMaxY - tDeltaY <= tMaxZ - tDeltaZ) {
+                    this.targetFace.y = -stepY;
+                } else {
+                    this.targetFace.z = -stepZ;
+                }
                 break;
             }
+
+            // Step to next voxel boundary
+            if (tMaxX < tMaxY) {
+                if (tMaxX < tMaxZ) {
+                    x += stepX;
+                    t = tMaxX;
+                    tMaxX += tDeltaX;
+                } else {
+                    z += stepZ;
+                    t = tMaxZ;
+                    tMaxZ += tDeltaZ;
+                }
+            } else {
+                if (tMaxY < tMaxZ) {
+                    y += stepY;
+                    t = tMaxY;
+                    tMaxY += tDeltaY;
+                } else {
+                    z += stepZ;
+                    t = tMaxZ;
+                    tMaxZ += tDeltaZ;
+                }
+            }
         }
-    }
-
-    /**
-     * Determine which face of a block was hit
-     */
-    getBlockFace(localPoint) {
-        const eps = 0.01;
-
-        if (localPoint.x < eps) {
-            return { x: -1, y: 0, z: 0 };
-        } // -X
-        if (localPoint.x > 1 - eps) {
-            return { x: 1, y: 0, z: 0 };
-        } // +X
-        if (localPoint.y < eps) {
-            return { x: 0, y: -1, z: 0 };
-        } // -Y
-        if (localPoint.y > 1 - eps) {
-            return { x: 0, y: 1, z: 0 };
-        } // +Y
-        if (localPoint.z < eps) {
-            return { x: 0, y: 0, z: -1 };
-        } // -Z
-        if (localPoint.z > 1 - eps) {
-            return { x: 0, y: 0, z: 1 };
-        } // +Z
-
-        // Default to top face if can't determine
-        return { x: 0, y: 1, z: 0 };
     }
 
     /**

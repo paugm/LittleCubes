@@ -43,6 +43,10 @@ export class HUD {
             this.infoPanelElement = document.getElementById('info-panel');
         }
 
+        // State caching to avoid rebuilding innerHTML every frame
+        this._lastMode = null;
+        this._lastBlockName = null;
+
         // Initialize hotbar
         this.initHotbar();
 
@@ -120,6 +124,14 @@ export class HUD {
             mode = 'Sprint Mode';
             modeColor = '#FF8C00';
         }
+
+        // Skip DOM rebuild if nothing changed
+        const blockName = selectedBlock ? selectedBlock.name : null;
+        if (mode === this._lastMode && blockName === this._lastBlockName) {
+            return;
+        }
+        this._lastMode = mode;
+        this._lastBlockName = blockName;
 
         if (selectedBlock) {
             // Only show keyboard controls on desktop

@@ -24,7 +24,7 @@
     "author": "Pau Garcia-Mila",
     "license": "MIT",
     "dependencies": {
-        "three": "^0.181.0"
+        "three": "^0.182.0"
     },
     "devDependencies": {
         "vite": "^7.2.2",

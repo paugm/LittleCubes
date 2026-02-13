@@ -150,6 +150,20 @@ export class Game {
                 this.performanceMonitor.toggle();
             }
         });
+
+        // Mouse wheel for inventory slot cycling
+        this.canvas.addEventListener(
+            'wheel',
+            (e) => {
+                e.preventDefault();
+                if (e.deltaY < 0) {
+                    this.inventory.previousSlot();
+                } else if (e.deltaY > 0) {
+                    this.inventory.nextSlot();
+                }
+            },
+            { passive: false }
+        );
     }
 
     /**
@@ -223,8 +237,12 @@ export class Game {
         const playerBlockY = Math.floor(playerPos.y);
         const playerBlockZ = Math.floor(playerPos.z);
 
-        if (placeX === playerBlockX && placeY === playerBlockY && placeZ === playerBlockZ) {
-            return; // Would place inside player
+        if (
+            placeX === playerBlockX &&
+            placeZ === playerBlockZ &&
+            (placeY === playerBlockY || placeY === playerBlockY + 1)
+        ) {
+            return; // Would place inside player (check feet and head)
         }
 
         // Trigger before hook
