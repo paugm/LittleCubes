@@ -28,8 +28,16 @@ import sandDef from './sand.js';
 import woodDef from './wood.js';
 import waterDef from './water.js';
 import bedrockDef from './bedrock.js';
+import leavesDef from './leaves.js';
+import glassDef from './glass.js';
+import brickDef from './brick.js';
+import snowDef from './snow.js';
+import lavaDef from './lava.js';
+import ironDef from './iron.js';
+import goldDef from './gold.js';
+import cobblestoneDef from './cobblestone.js';
 
-// Auto-register blocks in order
+// Auto-register blocks in order (IDs 1-15, filling the 4-bit address space)
 const GRASS = blockRegistry.register(grassDef);
 const DIRT = blockRegistry.register(dirtDef);
 const STONE = blockRegistry.register(stoneDef);
@@ -37,6 +45,14 @@ const SAND = blockRegistry.register(sandDef);
 const WOOD = blockRegistry.register(woodDef);
 const WATER = blockRegistry.register(waterDef);
 const BEDROCK = blockRegistry.register(bedrockDef);
+const LEAVES = blockRegistry.register(leavesDef);
+const GLASS = blockRegistry.register(glassDef);
+const BRICK = blockRegistry.register(brickDef);
+const SNOW = blockRegistry.register(snowDef);
+const LAVA = blockRegistry.register(lavaDef);
+const IRON = blockRegistry.register(ironDef);
+const GOLD = blockRegistry.register(goldDef);
+const COBBLESTONE = blockRegistry.register(cobblestoneDef);
 
 // Export block IDs for easy reference
 export const BlockType = {
@@ -47,7 +63,15 @@ export const BlockType = {
     SAND,
     WOOD,
     WATER,
-    BEDROCK
+    BEDROCK,
+    LEAVES,
+    GLASS,
+    BRICK,
+    SNOW,
+    LAVA,
+    IRON,
+    GOLD,
+    COBBLESTONE
 };
 
 // Export helper function to get all placeable blocks for inventory

@@ -23,6 +23,7 @@ import { HUD } from '../ui/HUD.js';
 import { TouchControls } from '../ui/TouchControls.js';
 import { ImportExport } from '../utils/ImportExport.js';
 import { PerformanceMonitor } from '../ui/PerformanceMonitor.js';
+import { BlueprintManager } from '../player/BlueprintManager.js';
 import { blockRegistry } from '../blocks/BlockRegistry.js';
 
 /**
@@ -104,6 +105,10 @@ export class Game {
             render: []
         };
 
+        // Blueprint system
+        this.blueprintManager = new BlueprintManager(this.world, this.renderer);
+        this.blueprintManager.onMessage = (msg) => this.hud.showMessage(msg);
+
         this.setupInputHandlers();
 
         // Initial chunk loading (without camera for first load)
@@ -119,6 +124,14 @@ export class Game {
         this.input.on('mousedown', (event) => {
             if (!this.input.isPointerLocked()) {
                 return;
+            }
+
+            // Blueprint mode intercepts left-clicks for corner selection
+            if (event.button === 0 && this.blueprintManager.isActive()) {
+                const target = this.player.getTargetBlock();
+                if (this.blueprintManager.handleClick(target)) {
+                    return; // Click consumed by blueprint system
+                }
             }
 
             if (event.button === 0) {
@@ -148,6 +161,46 @@ export class Game {
         this.input.on('keydown', (event) => {
             if (event.code === 'KeyP') {
                 this.performanceMonitor.toggle();
+            }
+        });
+
+        // Blueprint system keys
+        this.input.on('keydown', (event) => {
+            // Tab - toggle blueprint browser menu
+            if (event.code === 'Tab') {
+                event.preventDefault();
+                this.blueprintManager.toggleMenu();
+                return;
+            }
+
+            // B key (no modifier) - toggle blueprint mode
+            if (event.code === 'KeyB' && !event.ctrlKey && !event.metaKey) {
+                this.blueprintManager.toggleMode();
+                return;
+            }
+
+            // Ctrl+B - save current clipboard as named blueprint
+            if (event.code === 'KeyB' && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                this.blueprintManager.saveBlueprint();
+                return;
+            }
+
+            // C - copy selection (only in blueprint mode)
+            if (event.code === 'KeyC' && this.blueprintManager.isActive()) {
+                this.blueprintManager.copy();
+                return;
+            }
+
+            // V - paste clipboard at target
+            if (event.code === 'KeyV' && !event.ctrlKey && !event.metaKey) {
+                if (this.blueprintManager.clipboard) {
+                    const target = this.player.getTargetBlock();
+                    const face = this.player.getTargetFace();
+                    if (this.blueprintManager.paste(target, face)) {
+                        this.hasUnsavedChanges = true;
+                    }
+                }
             }
         });
 
@@ -434,6 +487,7 @@ export class Game {
      */
     dispose() {
         this.stop();
+        this.blueprintManager.dispose();
         this.renderer.dispose();
         this.input.dispose();
         this.performanceMonitor.dispose();
