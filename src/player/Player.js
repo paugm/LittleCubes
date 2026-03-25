@@ -409,46 +409,41 @@ export class Player {
                 ? (stepZ > 0 ? z + 1 - origin.z : origin.z - z) * tDeltaZ
                 : Infinity;
 
+        let faceX = 0, faceY = 0, faceZ = 0;
+
         let t = 0;
         while (t < maxDistance) {
             const blockId = this.world.getBlock(x, y, z);
             if (blockId !== 0) {
                 this.targetBlock = { x, y, z };
-                this.targetFace = { x: 0, y: 0, z: 0 };
-                // Face is opposite of last step direction
-                if (
-                    tMaxX - tDeltaX <= tMaxY - tDeltaY &&
-                    tMaxX - tDeltaX <= tMaxZ - tDeltaZ
-                ) {
-                    this.targetFace.x = -stepX;
-                } else if (tMaxY - tDeltaY <= tMaxZ - tDeltaZ) {
-                    this.targetFace.y = -stepY;
-                } else {
-                    this.targetFace.z = -stepZ;
-                }
+                this.targetFace = { x: faceX, y: faceY, z: faceZ };
                 break;
             }
 
-            // Step to next voxel boundary
+            // Step to next voxel boundary, tracking which face we cross
             if (tMaxX < tMaxY) {
                 if (tMaxX < tMaxZ) {
                     x += stepX;
                     t = tMaxX;
                     tMaxX += tDeltaX;
+                    faceX = -stepX; faceY = 0; faceZ = 0;
                 } else {
                     z += stepZ;
                     t = tMaxZ;
                     tMaxZ += tDeltaZ;
+                    faceX = 0; faceY = 0; faceZ = -stepZ;
                 }
             } else {
                 if (tMaxY < tMaxZ) {
                     y += stepY;
                     t = tMaxY;
                     tMaxY += tDeltaY;
+                    faceX = 0; faceY = -stepY; faceZ = 0;
                 } else {
                     z += stepZ;
                     t = tMaxZ;
                     tMaxZ += tDeltaZ;
+                    faceX = 0; faceY = 0; faceZ = -stepZ;
                 }
             }
         }
