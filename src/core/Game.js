@@ -53,6 +53,7 @@ export class Game {
 
         // Track unsaved changes
         this.hasUnsavedChanges = false;
+        this.suppressPlacementCursor = false;
 
         // Core systems
         this.renderer = new Renderer(canvas);
@@ -128,6 +129,10 @@ export class Game {
                 // Right click - place block
                 this.placeBlock();
             }
+        });
+
+        this.input.on('mouseup', () => {
+            this.suppressPlacementCursor = false;
         });
 
         // Prevent context menu on right click
@@ -262,6 +267,7 @@ export class Game {
         // Place the block
         this.world.setBlock(placeX, placeY, placeZ, selectedBlock.id);
         this.hasUnsavedChanges = true;
+        this.suppressPlacementCursor = true;
 
         // Trigger after hook
         this.triggerHook('afterBlockPlace', {
@@ -382,7 +388,7 @@ export class Game {
         // Determine if we're in placement or removal mode
         // Right mouse button (2) is for placement, left button (0) or no button held shows removal highlight
         // The cursor visuals are updated here, while the actual block change happens in the input handlers
-        const isPlacement = this.input.isMouseButtonPressed(2);
+        const isPlacement = this.input.isMouseButtonPressed(2) && !this.suppressPlacementCursor;
 
         this.renderer.updateBuildingCursor(targetBlock, targetFace, showCursor, isPlacement);
 
