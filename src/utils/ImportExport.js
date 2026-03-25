@@ -23,7 +23,7 @@ export class ImportExport {
      */
     static exportWorld(world, player) {
         const data = {
-            version: '1.0.2',
+            version: '1.0.3',
             timestamp: new Date().toISOString(),
             world: world.serialize(),
             player: player.serialize()

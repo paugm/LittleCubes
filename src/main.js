@@ -57,6 +57,9 @@ function init() {
                 try {
                     const worldData = JSON.parse(e.target.result);
                     menuOverlay.classList.add('hidden');
+                    if (game) {
+                        game.dispose();
+                    }
                     game = new Game(canvas, isTouchDevice, worldData);
                     game.start();
                 } catch (error) {

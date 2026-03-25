@@ -130,12 +130,10 @@ export class TouchControls {
                 e.preventDefault();
                 e.stopPropagation();
 
-                // Skip if we already have an active movement touch
                 if (this.movementTouchId !== null) {
                     return;
                 }
 
-                // Only handle the first changed touch
                 const touch = e.changedTouches[0];
                 if (touch) {
                     this.movementTouchId = touch.identifier;
@@ -158,12 +156,10 @@ export class TouchControls {
                 e.preventDefault();
                 e.stopPropagation();
 
-                // Skip if we already have an active look touch
                 if (this.lookTouchId !== null) {
                     return;
                 }
 
-                // Only handle the first changed touch
                 const touch = e.changedTouches[0];
                 if (touch) {
                     this.lookTouchId = touch.identifier;
@@ -171,7 +167,6 @@ export class TouchControls {
                     this.lookLastX = touch.clientX;
                     this.lookLastY = touch.clientY;
 
-                    // Reset knob position
                     this.lookKnob.style.transform = 'translate(-50%, -50%)';
                 }
             },
@@ -209,76 +204,63 @@ export class TouchControls {
             { passive: false }
         );
 
-        // Document-level touch move
-        document.addEventListener(
-            'touchmove',
-            (e) => {
-                let handled = false;
-                for (const touch of e.touches) {
-                    if (touch.identifier === this.movementTouchId) {
-                        e.preventDefault();
-                        this.updateMovement(touch.clientX, touch.clientY);
-                        handled = true;
-                    } else if (touch.identifier === this.lookTouchId) {
-                        e.preventDefault();
-                        this.updateLook(touch.clientX, touch.clientY);
-                        handled = true;
-                    }
-                }
-                // Prevent default scrolling if we handled a touch
-                if (handled) {
+        // Document-level touch move (store bound ref for disposal)
+        this._onDocTouchMove = (e) => {
+            let handled = false;
+            for (const touch of e.touches) {
+                if (touch.identifier === this.movementTouchId) {
                     e.preventDefault();
+                    this.updateMovement(touch.clientX, touch.clientY);
+                    handled = true;
+                } else if (touch.identifier === this.lookTouchId) {
+                    e.preventDefault();
+                    this.updateLook(touch.clientX, touch.clientY);
+                    handled = true;
                 }
-            },
-            { passive: false }
-        );
+            }
+            if (handled) {
+                e.preventDefault();
+            }
+        };
+        document.addEventListener('touchmove', this._onDocTouchMove, { passive: false });
 
-        // Document-level touch end
-        document.addEventListener(
-            'touchend',
-            (e) => {
-                for (const touch of e.changedTouches) {
-                    if (touch.identifier === this.movementTouchId) {
-                        this.movementActive = false;
-                        this.movementTouchId = null;
-                        this.movementKnob.style.transform = 'translate(-50%, -50%)';
-                        this.input.setJoystick(0, 0, false);
-                    } else if (touch.identifier === this.lookTouchId) {
-                        this.lookActive = false;
-                        this.lookTouchId = null;
-                        this.lookKnob.style.transform = 'translate(-50%, -50%)';
-                    } else if (touch.identifier === this.interactionTouchId) {
-                        this.handleInteractionEnd();
+        // Document-level touch end (store bound ref for disposal)
+        this._onDocTouchEnd = (e) => {
+            for (const touch of e.changedTouches) {
+                if (touch.identifier === this.movementTouchId) {
+                    this.movementActive = false;
+                    this.movementTouchId = null;
+                    this.movementKnob.style.transform = 'translate(-50%, -50%)';
+                    this.input.setJoystick(0, 0, false);
+                } else if (touch.identifier === this.lookTouchId) {
+                    this.lookActive = false;
+                    this.lookTouchId = null;
+                    this.lookKnob.style.transform = 'translate(-50%, -50%)';
+                } else if (touch.identifier === this.interactionTouchId) {
+                    this.handleInteractionEnd();
+                }
+            }
+        };
+        document.addEventListener('touchend', this._onDocTouchEnd, { passive: false });
+
+        // Canvas touch for block interactions (store bound ref for disposal)
+        this._canvas = document.getElementById('game-canvas');
+        this._onCanvasTouchStart = (e) => {
+            for (const touch of e.changedTouches) {
+                if (!this.isControlTouch(touch)) {
+                    if (
+                        this.movementTouchId === null &&
+                        this.lookTouchId === null &&
+                        this.interactionTouchId === null
+                    ) {
+                        this.handleInteractionStart(touch);
+                        e.preventDefault();
+                        break;
                     }
                 }
-            },
-            { passive: false }
-        );
-
-        // Canvas touch for block interactions
-        const canvas = document.getElementById('game-canvas');
-        canvas.addEventListener(
-            'touchstart',
-            (e) => {
-                // Only check new touches, not all active touches
-                for (const touch of e.changedTouches) {
-                    // Skip if this touch is on a control element
-                    if (!this.isControlTouch(touch)) {
-                        // Also skip if we already have active control touches
-                        if (
-                            this.movementTouchId === null &&
-                            this.lookTouchId === null &&
-                            this.interactionTouchId === null
-                        ) {
-                            this.handleInteractionStart(touch);
-                            e.preventDefault();
-                            break;
-                        }
-                    }
-                }
-            },
-            { passive: false }
-        );
+            }
+        };
+        this._canvas.addEventListener('touchstart', this._onCanvasTouchStart, { passive: false });
     }
 
     /**
@@ -422,5 +404,21 @@ export class TouchControls {
      */
     setGame(game) {
         this.game = game;
+    }
+
+    /**
+     * Cleanup all event listeners and DOM elements
+     */
+    dispose() {
+        if (this.interactionTimer) {
+            clearTimeout(this.interactionTimer);
+            this.interactionTimer = null;
+        }
+        document.removeEventListener('touchmove', this._onDocTouchMove);
+        document.removeEventListener('touchend', this._onDocTouchEnd);
+        if (this._canvas) {
+            this._canvas.removeEventListener('touchstart', this._onCanvasTouchStart);
+        }
+        this.hide();
     }
 }

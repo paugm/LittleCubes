@@ -91,6 +91,7 @@ export class Game {
         // Game state
         this.running = false;
         this.lastTime = 0;
+        this._animationFrameId = null;
 
         this.lastChunkUpdate = 0;
         this.chunkUpdateInterval = 1000 / 30; // 30 FPS for chunk updates
@@ -123,10 +124,8 @@ export class Game {
             }
 
             if (event.button === 0) {
-                // Left click - break block
                 this.breakBlock();
             } else if (event.button === 2) {
-                // Right click - place block
                 this.placeBlock();
             }
         });
@@ -136,13 +135,13 @@ export class Game {
         });
 
         // Prevent context menu on right click
-        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        this._onContextMenu = (e) => e.preventDefault();
+        this.canvas.addEventListener('contextmenu', this._onContextMenu);
 
         // Number keys for inventory selection
         this.input.on('keydown', (event) => {
             const key = event.code;
 
-            // Number keys 1-9
             if (key >= 'Digit1' && key <= 'Digit9') {
                 const slot = parseInt(key.replace('Digit', '')) - 1;
                 this.inventory.selectSlot(slot);
@@ -157,18 +156,15 @@ export class Game {
         });
 
         // Mouse wheel for inventory slot cycling
-        this.canvas.addEventListener(
-            'wheel',
-            (e) => {
-                e.preventDefault();
-                if (e.deltaY < 0) {
-                    this.inventory.previousSlot();
-                } else if (e.deltaY > 0) {
-                    this.inventory.nextSlot();
-                }
-            },
-            { passive: false }
-        );
+        this._onWheel = (e) => {
+            e.preventDefault();
+            if (e.deltaY < 0) {
+                this.inventory.previousSlot();
+            } else if (e.deltaY > 0) {
+                this.inventory.nextSlot();
+            }
+        };
+        this.canvas.addEventListener('wheel', this._onWheel, { passive: false });
     }
 
     /**
@@ -284,7 +280,7 @@ export class Game {
     start() {
         this.running = true;
         this.lastTime = performance.now();
-        this.gameLoop();
+        this._scheduleFrame();
     }
 
     /**
@@ -292,14 +288,17 @@ export class Game {
      */
     stop() {
         this.running = false;
+        if (this._animationFrameId !== null) {
+            cancelAnimationFrame(this._animationFrameId);
+            this._animationFrameId = null;
+        }
     }
 
     /**
      * Pause the game
      */
     pause() {
-        this.running = false;
-        // Exit pointer lock
+        this.stop();
         if (document.pointerLockElement) {
             document.exitPointerLock();
         }
@@ -309,32 +308,39 @@ export class Game {
      * Resume the game
      */
     resume() {
+        if (this.running) return;
         this.running = true;
         this.lastTime = performance.now();
-        this.gameLoop();
-        // Request pointer lock
+        this._scheduleFrame();
         this.input.requestPointerLock();
     }
 
     /**
-     * Main game loop
+     * Schedule the next animation frame (avoids duplicate loops)
      */
-    gameLoop() {
-        if (!this.running) {
-            return;
-        }
+    _scheduleFrame() {
+        if (this._animationFrameId !== null) return;
+        this._animationFrameId = requestAnimationFrame((time) => this._tick(time));
+    }
 
-        requestAnimationFrame(() => this.gameLoop());
+    /**
+     * Single frame tick -- runs update + render, then schedules the next frame
+     */
+    _tick() {
+        this._animationFrameId = null;
+
+        if (!this.running) return;
 
         const currentTime = performance.now();
-        const deltaTime = (currentTime - this.lastTime) / 1000; // Convert to seconds
+        const deltaTime = (currentTime - this.lastTime) / 1000;
         this.lastTime = currentTime;
 
-        // Cap delta time to prevent large jumps
         const cappedDeltaTime = Math.min(deltaTime, 0.1);
 
         this.update(cappedDeltaTime);
         this.render();
+
+        this._scheduleFrame();
     }
 
     /**
@@ -440,6 +446,11 @@ export class Game {
      */
     dispose() {
         this.stop();
+        this.canvas.removeEventListener('contextmenu', this._onContextMenu);
+        this.canvas.removeEventListener('wheel', this._onWheel);
+        if (this.touchControls) {
+            this.touchControls.dispose();
+        }
         this.renderer.dispose();
         this.input.dispose();
         this.performanceMonitor.dispose();
