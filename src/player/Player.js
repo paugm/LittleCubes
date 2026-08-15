@@ -69,6 +69,7 @@ export class Player {
 
         // Flying mode (disabled by default - start with physics)
         this.flying = false;
+        this.inWater = false;
 
         // Raycasting for block interaction
         this.raycaster = new THREE.Raycaster();
@@ -103,11 +104,12 @@ export class Player {
             if (!this.fKeyPressed) {
                 this.flying = !this.flying;
                 this.fKeyPressed = true;
-                // Fly mode toggled
             }
         } else {
             this.fKeyPressed = false;
         }
+
+        this.inWater = this._isInFluid();
 
         // Handle movement input (calculate desired velocity)
         this.handleMovement(deltaTime);
@@ -184,8 +186,8 @@ export class Player {
                 this.input.isKeyPressed('Space') ||
                 (this.touchControls && this.touchControls.getButtonStates().jump);
 
-            if (jumpPressed && this.onGround) {
-                this.velocity.y = this.jumpStrength;
+            if (jumpPressed && (this.onGround || this.inWater)) {
+                this.velocity.y = this.inWater ? 4.5 : this.jumpStrength;
             }
             // Sprint with Shift (walking mode)
             this.isSprinting =
@@ -240,10 +242,14 @@ export class Player {
      * Apply gravity and physics
      */
     applyPhysics(deltaTime) {
-        // Apply gravity
-        this.velocity.y += this.gravity * deltaTime;
+        if (this.inWater) {
+            this.velocity.y += this.gravity * 0.3 * deltaTime;
+            this.velocity.y = Math.max(this.velocity.y, -6);
+            this.velocity.y = Math.min(this.velocity.y, 6);
+            return;
+        }
 
-        // Terminal velocity
+        this.velocity.y += this.gravity * deltaTime;
         this.velocity.y = Math.max(this.velocity.y, -50);
     }
 
@@ -265,9 +271,8 @@ export class Player {
             for (let zOff = -0.3; zOff <= 0.3; zOff += 0.3) {
                 const checkX = Math.floor(this.position.x + xOff);
                 const checkZ = Math.floor(this.position.z + zOff);
-                const block = this.world.getBlock(checkX, feetY, checkZ);
 
-                if (block !== 0) {
+                if (this.world.isSolid(checkX, feetY, checkZ)) {
                     const blockTop = feetY + 1;
                     // If feet are at or below block top and moving down
                     if (playerFeet <= blockTop + tolerance && this.velocity.y <= 0) {
@@ -289,9 +294,8 @@ export class Player {
             for (let zOff = -0.3; zOff <= 0.3; zOff += 0.3) {
                 const checkX = Math.floor(this.position.x + xOff);
                 const checkZ = Math.floor(this.position.z + zOff);
-                const block = this.world.getBlock(checkX, headY, checkZ);
 
-                if (block !== 0 && this.velocity.y > 0) {
+                if (this.world.isSolid(checkX, headY, checkZ) && this.velocity.y > 0) {
                     const blockBottom = headY;
                     this.position.y = blockBottom - this.height + this.eyeHeight - tolerance;
                     this.velocity.y = 0;
@@ -311,7 +315,7 @@ export class Player {
                 const checkX = Math.floor(this.position.x + halfWidth + tolerance);
                 for (let zOff = -halfWidth; zOff <= halfWidth; zOff += halfWidth) {
                     const checkZ = Math.floor(this.position.z + zOff);
-                    if (this.world.getBlock(checkX, checkY, checkZ) !== 0) {
+                    if (this.world.isSolid(checkX, checkY, checkZ)) {
                         this.position.x = checkX - halfWidth - tolerance;
                         this.velocity.x = Math.min(0, this.velocity.x);
                         break;
@@ -324,7 +328,7 @@ export class Player {
                 const checkX = Math.floor(this.position.x - halfWidth - tolerance);
                 for (let zOff = -halfWidth; zOff <= halfWidth; zOff += halfWidth) {
                     const checkZ = Math.floor(this.position.z + zOff);
-                    if (this.world.getBlock(checkX, checkY, checkZ) !== 0) {
+                    if (this.world.isSolid(checkX, checkY, checkZ)) {
                         this.position.x = checkX + 1 + halfWidth + tolerance;
                         this.velocity.x = Math.max(0, this.velocity.x);
                         break;
@@ -340,7 +344,7 @@ export class Player {
                 const checkZ = Math.floor(this.position.z + halfWidth + tolerance);
                 for (let xOff = -halfWidth; xOff <= halfWidth; xOff += halfWidth) {
                     const checkX = Math.floor(this.position.x + xOff);
-                    if (this.world.getBlock(checkX, checkY, checkZ) !== 0) {
+                    if (this.world.isSolid(checkX, checkY, checkZ)) {
                         this.position.z = checkZ - halfWidth - tolerance;
                         this.velocity.z = Math.min(0, this.velocity.z);
                         break;
@@ -353,7 +357,7 @@ export class Player {
                 const checkZ = Math.floor(this.position.z - halfWidth - tolerance);
                 for (let xOff = -halfWidth; xOff <= halfWidth; xOff += halfWidth) {
                     const checkX = Math.floor(this.position.x + xOff);
-                    if (this.world.getBlock(checkX, checkY, checkZ) !== 0) {
+                    if (this.world.isSolid(checkX, checkY, checkZ)) {
                         this.position.z = checkZ + 1 + halfWidth + tolerance;
                         this.velocity.z = Math.max(0, this.velocity.z);
                         break;
@@ -397,24 +401,19 @@ export class Player {
         const tDeltaZ = direction.z !== 0 ? Math.abs(1 / direction.z) : Infinity;
 
         let tMaxX =
-            direction.x !== 0
-                ? (stepX > 0 ? x + 1 - origin.x : origin.x - x) * tDeltaX
-                : Infinity;
+            direction.x !== 0 ? (stepX > 0 ? x + 1 - origin.x : origin.x - x) * tDeltaX : Infinity;
         let tMaxY =
-            direction.y !== 0
-                ? (stepY > 0 ? y + 1 - origin.y : origin.y - y) * tDeltaY
-                : Infinity;
+            direction.y !== 0 ? (stepY > 0 ? y + 1 - origin.y : origin.y - y) * tDeltaY : Infinity;
         let tMaxZ =
-            direction.z !== 0
-                ? (stepZ > 0 ? z + 1 - origin.z : origin.z - z) * tDeltaZ
-                : Infinity;
+            direction.z !== 0 ? (stepZ > 0 ? z + 1 - origin.z : origin.z - z) * tDeltaZ : Infinity;
 
-        let faceX = 0, faceY = 0, faceZ = 0;
+        let faceX = 0,
+            faceY = 0,
+            faceZ = 0;
 
         let t = 0;
         while (t < maxDistance) {
-            const blockId = this.world.getBlock(x, y, z);
-            if (blockId !== 0) {
+            if (this.world.isSolid(x, y, z)) {
                 this.targetBlock = { x, y, z };
                 this.targetFace = { x: faceX, y: faceY, z: faceZ };
                 break;
@@ -426,27 +425,55 @@ export class Player {
                     x += stepX;
                     t = tMaxX;
                     tMaxX += tDeltaX;
-                    faceX = -stepX; faceY = 0; faceZ = 0;
+                    faceX = -stepX;
+                    faceY = 0;
+                    faceZ = 0;
                 } else {
                     z += stepZ;
                     t = tMaxZ;
                     tMaxZ += tDeltaZ;
-                    faceX = 0; faceY = 0; faceZ = -stepZ;
+                    faceX = 0;
+                    faceY = 0;
+                    faceZ = -stepZ;
                 }
             } else {
                 if (tMaxY < tMaxZ) {
                     y += stepY;
                     t = tMaxY;
                     tMaxY += tDeltaY;
-                    faceX = 0; faceY = -stepY; faceZ = 0;
+                    faceX = 0;
+                    faceY = -stepY;
+                    faceZ = 0;
                 } else {
                     z += stepZ;
                     t = tMaxZ;
                     tMaxZ += tDeltaZ;
-                    faceX = 0; faceY = 0; faceZ = -stepZ;
+                    faceX = 0;
+                    faceY = 0;
+                    faceZ = -stepZ;
                 }
             }
         }
+    }
+
+    /**
+     * True when the player's body overlaps a non-solid fluid block
+     */
+    _isInFluid() {
+        const feet = this.position.y - this.eyeHeight;
+        const sampleYs = [feet + 0.3, feet + 1.0];
+        for (const sampleY of sampleYs) {
+            if (
+                this.world.isFluid(
+                    Math.floor(this.position.x),
+                    Math.floor(sampleY),
+                    Math.floor(this.position.z)
+                )
+            ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

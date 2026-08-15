@@ -90,36 +90,80 @@ export class Chunk {
     }
 
     /**
+     * Neighbor chunk in a face direction (nx,ny,nz is a unit axis)
+     */
+    getFaceNeighbor(nx, ny, nz) {
+        if (nx === 1) {
+            return this.neighbors.px;
+        }
+        if (nx === -1) {
+            return this.neighbors.nx;
+        }
+        if (ny === 1) {
+            return this.neighbors.py;
+        }
+        if (ny === -1) {
+            return this.neighbors.ny;
+        }
+        if (nz === 1) {
+            return this.neighbors.pz;
+        }
+        if (nz === -1) {
+            return this.neighbors.nz;
+        }
+        return null;
+    }
+
+    /**
      * Check if a block face should be rendered
      */
     isFaceVisible(x, y, z, nx, ny, nz) {
-        const neighborBlock = this.getBlock(x + nx, y + ny, z + nz);
+        const lx = x + nx;
+        const ly = y + ny;
+        const lz = z + nz;
+
+        let neighborBlock;
+        if (
+            lx >= 0 &&
+            lx < Chunk.SIZE &&
+            ly >= 0 &&
+            ly < Chunk.SIZE &&
+            lz >= 0 &&
+            lz < Chunk.SIZE
+        ) {
+            neighborBlock = this.getBlock(lx, ly, lz);
+        } else {
+            const neighborChunk = this.getFaceNeighbor(nx, ny, nz);
+            if (!neighborChunk) {
+                return true;
+            }
+            const wx = (lx + Chunk.SIZE) % Chunk.SIZE;
+            const wy = (ly + Chunk.SIZE) % Chunk.SIZE;
+            const wz = (lz + Chunk.SIZE) % Chunk.SIZE;
+            neighborBlock = neighborChunk.getBlock(wx, wy, wz);
+        }
 
         if (neighborBlock === 0) {
             return true;
-        } // Air is always transparent
+        }
 
         const neighborDef = blockRegistry.getById(neighborBlock);
         return neighborDef && neighborDef.transparent;
     }
 
     /**
-     * Generate mesh from voxel data
+     * Generate mesh from voxel data (opaque and translucent as a group)
      */
     generateMesh() {
         if (!this.dirty) {
-            return;
+            return this.mesh;
         }
 
-        const positions = [];
-        const colors = [];
-        const indices = [];
-        let vertexCount = 0;
+        const opaque = { positions: [], colors: [], indices: [], vertexCount: 0 };
+        const translucent = { positions: [], colors: [], indices: [], vertexCount: 0 };
 
-        // Simple face shading values for basic depth perception
-        const faceShades = [1.0, 0.6, 0.8]; // [top, bottom, sides]
+        const faceShades = [1.0, 0.6, 0.8];
 
-        // Pre-define face data to avoid recreating objects
         const faces = [
             {
                 dir: [1, 0, 0],
@@ -130,7 +174,7 @@ export class Chunk {
                     [1, 0, 1]
                 ],
                 shadeIdx: 2
-            }, // +X (sides)
+            },
             {
                 dir: [-1, 0, 0],
                 corners: [
@@ -140,7 +184,7 @@ export class Chunk {
                     [0, 0, 0]
                 ],
                 shadeIdx: 2
-            }, // -X (sides)
+            },
             {
                 dir: [0, 1, 0],
                 corners: [
@@ -150,7 +194,7 @@ export class Chunk {
                     [1, 1, 0]
                 ],
                 shadeIdx: 0
-            }, // +Y (top)
+            },
             {
                 dir: [0, -1, 0],
                 corners: [
@@ -160,7 +204,7 @@ export class Chunk {
                     [0, 0, 1]
                 ],
                 shadeIdx: 1
-            }, // -Y (bottom)
+            },
             {
                 dir: [0, 0, 1],
                 corners: [
@@ -170,7 +214,7 @@ export class Chunk {
                     [0, 1, 1]
                 ],
                 shadeIdx: 2
-            }, // +Z (sides)
+            },
             {
                 dir: [0, 0, -1],
                 corners: [
@@ -180,104 +224,124 @@ export class Chunk {
                     [1, 1, 0]
                 ],
                 shadeIdx: 2
-            } // -Z (sides)
+            }
         ];
 
-        // Generate mesh data for each block
         for (let x = 0; x < Chunk.SIZE; x++) {
             for (let y = 0; y < Chunk.SIZE; y++) {
                 for (let z = 0; z < Chunk.SIZE; z++) {
                     const blockId = this.getBlock(x, y, z);
                     if (blockId === 0) {
                         continue;
-                    } // Skip air
+                    }
 
                     const blockDef = blockRegistry.getById(blockId);
                     if (!blockDef) {
                         continue;
                     }
 
-                    // World position of this block
                     const wx = this.x * Chunk.SIZE + x;
                     const wy = this.y * Chunk.SIZE + y;
                     const wz = this.z * Chunk.SIZE + z;
 
-                    // Get base color with deterministic variation based on position
-                    // This ensures colors stay consistent when mesh regenerates
                     const colorHash = ((wx * 73) ^ (wy * 179) ^ (wz * 283)) & 0xff;
-                    const variation = 0.9 + (colorHash / 255.0) * 0.2; // 90%-110% brightness
+                    const variation = 0.9 + (colorHash / 255.0) * 0.2;
 
-                    // Convert hex color to RGB and apply variation
                     const color = new THREE.Color(blockDef.color);
                     const baseR = color.r * variation;
                     const baseG = color.g * variation;
                     const baseB = color.b * variation;
 
-                    // Check each face
+                    const target = blockDef.transparent ? translucent : opaque;
+
                     for (let faceIdx = 0; faceIdx < 6; faceIdx++) {
                         const face = faces[faceIdx];
                         const [nx, ny, nz] = face.dir;
 
                         if (this.isFaceVisible(x, y, z, nx, ny, nz)) {
                             const shade = faceShades[face.shadeIdx];
-
-                            // Calculate face color directly (no cloning)
                             const faceR = baseR * shade;
                             const faceG = baseG * shade;
                             const faceB = baseB * shade;
 
-                            // Add 4 vertices for this face
                             for (let vi = 0; vi < 4; vi++) {
                                 const corner = face.corners[vi];
-                                positions.push(wx + corner[0], wy + corner[1], wz + corner[2]);
-                                colors.push(faceR, faceG, faceB);
+                                target.positions.push(
+                                    wx + corner[0],
+                                    wy + corner[1],
+                                    wz + corner[2]
+                                );
+                                target.colors.push(faceR, faceG, faceB);
                             }
 
-                            // Add 2 triangles (6 indices)
-                            indices.push(
-                                vertexCount,
-                                vertexCount + 1,
-                                vertexCount + 2,
-                                vertexCount,
-                                vertexCount + 2,
-                                vertexCount + 3
+                            target.indices.push(
+                                target.vertexCount,
+                                target.vertexCount + 1,
+                                target.vertexCount + 2,
+                                target.vertexCount,
+                                target.vertexCount + 2,
+                                target.vertexCount + 3
                             );
 
-                            vertexCount += 4;
+                            target.vertexCount += 4;
                         }
                     }
                 }
             }
         }
 
-        // Clean up old mesh
-        if (this.mesh) {
-            this.mesh.geometry.dispose();
-            this.mesh.material.dispose();
+        this._disposeMesh();
+
+        const group = new THREE.Group();
+        const opaqueMesh = this._createMeshFromBuffers(opaque, false);
+        const translucentMesh = this._createMeshFromBuffers(translucent, true);
+
+        if (opaqueMesh) {
+            group.add(opaqueMesh);
+        }
+        if (translucentMesh) {
+            group.add(translucentMesh);
         }
 
-        // Create new mesh if we have vertices
-        if (positions.length > 0) {
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            geometry.setIndex(indices);
-            geometry.computeVertexNormals();
-
-            const material = new THREE.MeshLambertMaterial({
-                vertexColors: true,
-                flatShading: false
-            });
-
-            this.mesh = new THREE.Mesh(geometry, material);
-            this.mesh.frustumCulled = true;
-        } else {
+        if (group.children.length === 0) {
             this.mesh = null;
+            this.dirty = false;
+            return null;
         }
 
+        this.mesh = group;
         this.dirty = false;
-
         return this.mesh;
+    }
+
+    /**
+     * Build a Three.js mesh from packed vertex buffers
+     */
+    _createMeshFromBuffers(buffers, transparent) {
+        if (buffers.positions.length === 0) {
+            return null;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(buffers.positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(buffers.colors, 3));
+        geometry.setIndex(buffers.indices);
+        geometry.computeVertexNormals();
+
+        const material = new THREE.MeshLambertMaterial({
+            vertexColors: true,
+            flatShading: false,
+            transparent,
+            opacity: transparent ? 0.6 : 1,
+            depthWrite: !transparent
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.frustumCulled = true;
+        if (transparent) {
+            mesh.renderOrder = 1;
+        }
+        return mesh;
     }
 
     /**
@@ -288,18 +352,29 @@ export class Chunk {
     }
 
     /**
+     * Dispose of GPU resources for the current mesh
+     */
+    _disposeMesh() {
+        if (!this.mesh) {
+            return;
+        }
+
+        this.mesh.traverse((child) => {
+            if (child.geometry) {
+                child.geometry.dispose();
+            }
+            if (child.material) {
+                child.material.dispose();
+            }
+        });
+        this.mesh = null;
+    }
+
+    /**
      * Dispose of resources
      */
     dispose() {
-        if (this.mesh) {
-            if (this.mesh.geometry) {
-                this.mesh.geometry.dispose();
-            }
-            if (this.mesh.material) {
-                this.mesh.material.dispose();
-            }
-            this.mesh = null;
-        }
+        this._disposeMesh();
     }
 
     /**
@@ -365,10 +440,7 @@ export class Chunk {
                 }
             }
             const packedArray = new Uint8Array(packed);
-            chunk.blocks = BitPacking.unpack3bit(
-                packedArray,
-                Chunk.SIZE * Chunk.SIZE * Chunk.SIZE
-            );
+            chunk.blocks = BitPacking.unpack3bit(packedArray, Chunk.SIZE * Chunk.SIZE * Chunk.SIZE);
         } else if (data.v === 2 && data.rle) {
             // Version 2: RLE compressed format (old format without bit packing)
             let blockIndex = 0;

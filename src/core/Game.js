@@ -95,6 +95,19 @@ export class Game {
 
         this.lastChunkUpdate = 0;
         this.chunkUpdateInterval = 1000 / 30; // 30 FPS for chunk updates
+        this._autosaveTimer = null;
+        this._autosaveIntervalMs = 30000;
+
+        this._onVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                this.persistAutosave();
+            }
+        };
+        this._onPageHide = () => {
+            this.persistAutosave();
+        };
+        document.addEventListener('visibilitychange', this._onVisibilityChange);
+        window.addEventListener('pagehide', this._onPageHide);
 
         // Event hooks (for mod API)
         this.hooks = {
@@ -108,9 +121,9 @@ export class Game {
 
         this.setupInputHandlers();
 
-        // Initial chunk loading (without camera for first load)
+        // Initial chunk loading
         const playerPos = this.player.getPosition();
-        this.world.updateChunks(playerPos.x, playerPos.y, playerPos.z, null);
+        this.world.updateChunks(playerPos.x, playerPos.y, playerPos.z);
     }
 
     /**
@@ -281,6 +294,8 @@ export class Game {
         this.running = true;
         this.lastTime = performance.now();
         this._scheduleFrame();
+        this._startAutosaveTimer();
+        this.persistAutosave();
     }
 
     /**
@@ -299,6 +314,7 @@ export class Game {
      */
     pause() {
         this.stop();
+        this.persistAutosave();
         if (document.pointerLockElement) {
             document.exitPointerLock();
         }
@@ -308,10 +324,13 @@ export class Game {
      * Resume the game
      */
     resume() {
-        if (this.running) return;
+        if (this.running) {
+            return;
+        }
         this.running = true;
         this.lastTime = performance.now();
         this._scheduleFrame();
+        this._startAutosaveTimer();
         this.input.requestPointerLock();
     }
 
@@ -319,7 +338,9 @@ export class Game {
      * Schedule the next animation frame (avoids duplicate loops)
      */
     _scheduleFrame() {
-        if (this._animationFrameId !== null) return;
+        if (this._animationFrameId !== null) {
+            return;
+        }
         this._animationFrameId = requestAnimationFrame((time) => this._tick(time));
     }
 
@@ -329,7 +350,9 @@ export class Game {
     _tick() {
         this._animationFrameId = null;
 
-        if (!this.running) return;
+        if (!this.running) {
+            return;
+        }
 
         const currentTime = performance.now();
         const deltaTime = (currentTime - this.lastTime) / 1000;
@@ -367,8 +390,7 @@ export class Game {
         if (currentTime - this.lastChunkUpdate >= this.chunkUpdateInterval) {
             // Stream nearby chunks on a slower cadence to avoid large frame spikes
             const playerPos = this.player.getPosition();
-            const camera = this.renderer.getCamera();
-            this.world.updateChunks(playerPos.x, playerPos.y, playerPos.z, camera);
+            this.world.updateChunks(playerPos.x, playerPos.y, playerPos.z);
             this.lastChunkUpdate = currentTime;
         }
 
@@ -410,8 +432,36 @@ export class Game {
      */
     exportWorld() {
         ImportExport.downloadWorld(this.world, this.player);
+        this.persistAutosave();
         this.hasUnsavedChanges = false;
         this.hud.showMessage('World exported successfully!');
+    }
+
+    /**
+     * Write the current world to browser storage
+     */
+    persistAutosave() {
+        ImportExport.saveToBrowser(this.world, this.player)
+            .then(() => {
+                this.hasUnsavedChanges = false;
+            })
+            .catch((error) => {
+                console.error('Autosave failed:', error);
+            });
+    }
+
+    _startAutosaveTimer() {
+        this._stopAutosaveTimer();
+        this._autosaveTimer = setInterval(() => {
+            this.persistAutosave();
+        }, this._autosaveIntervalMs);
+    }
+
+    _stopAutosaveTimer() {
+        if (this._autosaveTimer !== null) {
+            clearInterval(this._autosaveTimer);
+            this._autosaveTimer = null;
+        }
     }
 
     /**
@@ -446,6 +496,9 @@ export class Game {
      */
     dispose() {
         this.stop();
+        this._stopAutosaveTimer();
+        document.removeEventListener('visibilitychange', this._onVisibilityChange);
+        window.removeEventListener('pagehide', this._onPageHide);
         this.canvas.removeEventListener('contextmenu', this._onContextMenu);
         this.canvas.removeEventListener('wheel', this._onWheel);
         if (this.touchControls) {

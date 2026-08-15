@@ -14,20 +14,26 @@
  */
 
 import { Game } from './core/Game.js';
+import { ImportExport } from './utils/ImportExport.js';
 
 let game;
 
-// Handle page unload warning for unsaved changes
 window.addEventListener('beforeunload', (event) => {
     if (game && game.getHasUnsavedChanges && game.getHasUnsavedChanges()) {
         event.preventDefault();
+        event.returnValue = '';
         return '';
     }
 });
 
+function isTouchPrimaryDevice() {
+    return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+}
+
 function init() {
     const canvas = document.getElementById('game-canvas');
     const startButton = document.getElementById('start-button');
+    const continueButton = document.getElementById('continue-button');
     const loadButton = document.getElementById('load-button');
     const fileInput = document.getElementById('file-input');
     const menuOverlay = document.getElementById('menu-overlay');
@@ -37,12 +43,57 @@ function init() {
     const resumeButton = document.getElementById('resume-button');
     const newWorldButton = document.getElementById('new-world-button');
 
-    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const isTouchDevice = isTouchPrimaryDevice();
 
-    startButton.addEventListener('click', () => {
+    const startGame = (worldData = null) => {
         menuOverlay.classList.add('hidden');
-        game = new Game(canvas, isTouchDevice);
+        if (game) {
+            game.dispose();
+        }
+        game = new Game(canvas, isTouchDevice, worldData);
         game.start();
+    };
+
+    const refreshContinueButton = async () => {
+        const hasSave = await ImportExport.hasBrowserSave();
+        continueButton.classList.toggle('hidden', !hasSave);
+        startButton.classList.toggle('primary', !hasSave);
+        startButton.classList.toggle('secondary', hasSave);
+        if (hasSave) {
+            continueButton.classList.add('primary');
+        }
+    };
+
+    refreshContinueButton();
+
+    continueButton.addEventListener('click', async () => {
+        try {
+            const worldData = await ImportExport.loadFromBrowser();
+            if (!worldData) {
+                await refreshContinueButton();
+                return;
+            }
+            startGame(worldData);
+        } catch (error) {
+            console.error('Failed to continue world:', error);
+            alert('Failed to load the auto-saved world.');
+            await ImportExport.clearBrowserSave();
+            await refreshContinueButton();
+        }
+    });
+
+    startButton.addEventListener('click', async () => {
+        const hasSave = await ImportExport.hasBrowserSave();
+        if (hasSave) {
+            const confirmed = confirm(
+                'Start a new world? Your auto-saved world will be replaced once you start building.'
+            );
+            if (!confirmed) {
+                return;
+            }
+            await ImportExport.clearBrowserSave();
+        }
+        startGame();
     });
 
     loadButton.addEventListener('click', () => {
@@ -51,17 +102,16 @@ function init() {
 
     fileInput.addEventListener('change', (event) => {
         const file = event.target.files[0];
+        event.target.value = '';
         if (file) {
             const reader = new FileReader();
-            reader.onload = (e) => {
+            reader.onload = async (e) => {
                 try {
-                    const worldData = JSON.parse(e.target.result);
-                    menuOverlay.classList.add('hidden');
+                    const worldData = ImportExport.parseWorldData(e.target.result);
+                    startGame(worldData);
                     if (game) {
-                        game.dispose();
+                        game.persistAutosave();
                     }
-                    game = new Game(canvas, isTouchDevice, worldData);
-                    game.start();
                 } catch (error) {
                     console.error('Failed to load world:', error);
                     alert('Failed to load world file. Please check the file format.');
@@ -88,23 +138,20 @@ function init() {
     saveWorldButton.addEventListener('click', () => {
         if (game) {
             game.exportWorld();
-            // hasUnsavedChanges flag is reset inside exportWorld()
             pauseMenu.classList.add('hidden');
             game.resume();
         }
     });
 
-    newWorldButton.addEventListener('click', () => {
+    newWorldButton.addEventListener('click', async () => {
         if (confirm('Start a new world? Current progress will be lost unless you save first.')) {
             pauseMenu.classList.add('hidden');
-            game.dispose();
-            game = new Game(canvas, isTouchDevice);
-            game.start();
+            await ImportExport.clearBrowserSave();
+            startGame();
         }
     });
 
     document.addEventListener('keydown', (event) => {
-        // Only allow pause toggling once the main menu overlay is hidden (game started)
         if (event.code === 'Escape' && game && menuOverlay.classList.contains('hidden')) {
             if (pauseMenu.classList.contains('hidden')) {
                 pauseMenu.classList.remove('hidden');

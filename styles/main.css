@@ -743,6 +743,11 @@ body {
     left: 100%;
 }
 
+.menu-button:focus-visible {
+    outline: 2px solid rgba(255, 215, 0, 0.85);
+    outline-offset: 3px;
+}
+
 .menu-button:active {
     transform: translateY(0) scale(0.98);
 }

@@ -14,9 +14,18 @@
  * @license MIT
  */
 
-import * as THREE from 'three';
 import { Chunk } from './Chunk.js';
 import { TerrainGenerator } from './TerrainGenerator.js';
+import { blockRegistry } from '../blocks/BlockRegistry.js';
+
+const NEIGHBOR_DIRS = [
+    { key: 'px', opp: 'nx', dx: 1, dy: 0, dz: 0 },
+    { key: 'nx', opp: 'px', dx: -1, dy: 0, dz: 0 },
+    { key: 'py', opp: 'ny', dx: 0, dy: 1, dz: 0 },
+    { key: 'ny', opp: 'py', dx: 0, dy: -1, dz: 0 },
+    { key: 'pz', opp: 'nz', dx: 0, dy: 0, dz: 1 },
+    { key: 'nz', opp: 'pz', dx: 0, dy: 0, dz: -1 }
+];
 
 /**
  * World - Manages all chunks, handles infinite terrain generation
@@ -108,11 +117,66 @@ export class World {
         const chunk = new Chunk(cx, cy, cz);
         this.terrainGenerator.generateChunk(chunk);
         this.chunks.set(key, chunk);
+        this.linkChunkNeighbors(chunk);
 
         // Trigger hook
         this.triggerHook('chunkGenerated', chunk);
 
         return chunk;
+    }
+
+    /**
+     * Whether the block at world coordinates is solid for collision
+     */
+    isSolid(x, y, z) {
+        const blockId = this.getBlock(x, y, z);
+        if (blockId === 0) {
+            return false;
+        }
+
+        const blockDef = blockRegistry.getById(blockId);
+        return !blockDef || blockDef.solid;
+    }
+
+    /**
+     * Whether the block at world coordinates is a non-solid fluid (e.g. water)
+     */
+    isFluid(x, y, z) {
+        const blockId = this.getBlock(x, y, z);
+        if (blockId === 0) {
+            return false;
+        }
+
+        const blockDef = blockRegistry.getById(blockId);
+        return Boolean(blockDef && !blockDef.solid);
+    }
+
+    /**
+     * Wire neighbor pointers so mesh face culling can see across chunk borders
+     */
+    linkChunkNeighbors(chunk) {
+        for (const dir of NEIGHBOR_DIRS) {
+            const neighbor = this.getChunk(chunk.x + dir.dx, chunk.y + dir.dy, chunk.z + dir.dz);
+            chunk.neighbors[dir.key] = neighbor;
+            if (neighbor) {
+                neighbor.neighbors[dir.opp] = chunk;
+                neighbor.markDirty();
+            }
+        }
+    }
+
+    /**
+     * Clear neighbor pointers before unloading a chunk
+     */
+    unlinkChunkNeighbors(chunk) {
+        for (const dir of NEIGHBOR_DIRS) {
+            const neighbor = chunk.neighbors[dir.key];
+            if (neighbor) {
+                neighbor.neighbors[dir.opp] = null;
+                neighbor.markDirty();
+            }
+            chunk.neighbors[dir.key] = null;
+        }
     }
 
     /**
@@ -188,10 +252,11 @@ export class World {
     }
 
     /**
-     * Update chunks based on player position and view direction
-     * Loads new chunks and unloads distant ones
+     * Update chunks based on player position
+     * Loads a full cylinder around the player so collision always has ground,
+     * then unloads distant unmodified chunks. Mesh frustum culling is left to Three.js.
      */
-    updateChunks(playerX, playerY, playerZ, camera) {
+    updateChunks(playerX, playerY, playerZ) {
         const playerChunk = this.worldToChunk(playerX, playerY, playerZ);
 
         // Clamp player vertical chunk to prevent loading too many chunks
@@ -200,20 +265,7 @@ export class World {
             Math.min(this.maxHeight, playerChunk.y)
         );
 
-        // Generate chunks around player
         const chunksToKeep = new Set();
-        // We reuse the same set while iterating so we can later determine which chunks to unload
-
-        // Get camera frustum for culling (if camera is available)
-        let frustum = null;
-        if (camera && camera.projectionMatrix && camera.matrixWorldInverse) {
-            frustum = new THREE.Frustum();
-            const matrix = new THREE.Matrix4().multiplyMatrices(
-                camera.projectionMatrix,
-                camera.matrixWorldInverse
-            );
-            frustum.setFromProjectionMatrix(matrix);
-        }
 
         for (
             let cx = playerChunk.x - this.renderDistance;
@@ -225,7 +277,6 @@ export class World {
                 cy <= clampedPlayerChunkY + this.verticalRenderDistance;
                 cy++
             ) {
-                // Enforce absolute height limits
                 if (cy < this.minHeight || cy > this.maxHeight) {
                     continue;
                 }
@@ -235,24 +286,6 @@ export class World {
                     cz <= playerChunk.z + this.renderDistance;
                     cz++
                 ) {
-                    // Frustum culling - check if chunk is in view (if camera available)
-                    if (frustum) {
-                        const chunkWorldPos = new THREE.Vector3(
-                            cx * Chunk.SIZE + Chunk.SIZE / 2,
-                            cy * Chunk.SIZE + Chunk.SIZE / 2,
-                            cz * Chunk.SIZE + Chunk.SIZE / 2
-                        );
-
-                        // Create bounding sphere for chunk
-                        const chunkRadius = Chunk.SIZE * 0.866; // sqrt(3)/2 * size
-                        const chunkSphere = new THREE.Sphere(chunkWorldPos, chunkRadius);
-
-                        // Skip chunks not in frustum
-                        if (!frustum.intersectsSphere(chunkSphere)) {
-                            continue;
-                        }
-                    }
-
                     const key = this.getChunkKey(cx, cy, cz);
                     chunksToKeep.add(key);
 
@@ -263,20 +296,16 @@ export class World {
             }
         }
 
-        // Unload distant chunks (but keep modified chunks in a separate store for saving)
         const chunksToUnload = [];
         for (const [key, chunk] of this.chunks.entries()) {
-            if (!chunksToKeep.has(key)) {
-                // Keep modified chunks in memory
-                if (!chunk.modified) {
-                    chunksToUnload.push(key);
-                }
+            if (!chunksToKeep.has(key) && !chunk.modified) {
+                chunksToUnload.push(key);
             }
         }
 
         for (const key of chunksToUnload) {
-            // Remove geometry for far chunks to keep GPU memory usage stable
             const chunk = this.chunks.get(key);
+            this.unlinkChunkNeighbors(chunk);
             chunk.dispose();
             this.chunks.delete(key);
             this.triggerHook('chunkUnloaded', chunk);
@@ -358,7 +387,9 @@ export class World {
             world.chunks.set(key, chunk);
         }
 
-        // World loaded successfully
+        for (const chunk of world.chunks.values()) {
+            world.linkChunkNeighbors(chunk);
+        }
 
         return world;
     }

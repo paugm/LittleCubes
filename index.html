@@ -95,15 +95,24 @@
 
                     <!-- Menu Buttons -->
                     <div class="menu-buttons-container">
-                        <button id="start-button" class="menu-button primary">
-                            <span class="button-icon">🕹️</span>
+                        <button
+                            id="continue-button"
+                            type="button"
+                            class="menu-button primary hidden"
+                        >
+                            <span class="button-icon" aria-hidden="true">▶️</span>
+                            <span class="button-text">Continue</span>
+                            <span class="button-hint">Pick up where you left off</span>
+                        </button>
+                        <button id="start-button" type="button" class="menu-button primary">
+                            <span class="button-icon" aria-hidden="true">🕹️</span>
                             <span class="button-text">New Game</span>
                             <span class="button-hint">Start a fresh world</span>
                         </button>
-                        <button id="load-button" class="menu-button secondary">
-                            <span class="button-icon">💾</span>
+                        <button id="load-button" type="button" class="menu-button secondary">
+                            <span class="button-icon" aria-hidden="true">💾</span>
                             <span class="button-text">Load World</span>
-                            <span class="button-hint">Continue your adventure</span>
+                            <span class="button-hint">Import a saved file</span>
                         </button>
                     </div>
 

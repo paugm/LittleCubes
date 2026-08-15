@@ -1,5 +1,6 @@
 node_modules/
 dist/
+LittleCUBES.html
 *.min.js
 *.min.css
 package-lock.json

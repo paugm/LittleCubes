@@ -277,55 +277,38 @@ export class Renderer {
 
         // Dispose all chunk meshes
         for (const mesh of this.chunkMeshes.values()) {
-            if (mesh.geometry) {
-                mesh.geometry.dispose();
-            }
-            if (mesh.material) {
-                mesh.material.dispose();
-            }
+            this.scene.remove(mesh);
+            this._disposeObject(mesh);
         }
         this.chunkMeshes.clear();
 
-        // Dispose placement cursor
-        if (this.placementCursor) {
-            if (this.placementCursor.geometry) {
-                this.placementCursor.geometry.dispose();
-            }
-            if (this.placementCursor.material) {
-                this.placementCursor.material.dispose();
-            }
-            this.scene.remove(this.placementCursor);
-        }
+        this._disposeObject(this.placementCursor);
+        this.scene.remove(this.placementCursor);
 
-        if (this.placementBox) {
-            if (this.placementBox.geometry) {
-                this.placementBox.geometry.dispose();
-            }
-            if (this.placementBox.material) {
-                this.placementBox.material.dispose();
-            }
-            this.scene.remove(this.placementBox);
-        }
+        this._disposeObject(this.placementBox);
+        this.scene.remove(this.placementBox);
 
-        // Dispose removal cursor
-        if (this.removalCursor) {
-            if (this.removalCursor.geometry) {
-                this.removalCursor.geometry.dispose();
-            }
-            if (this.removalCursor.material) {
-                this.removalCursor.material.dispose();
-            }
-            this.scene.remove(this.removalCursor);
-        }
+        this._disposeObject(this.removalCursor);
+        this.scene.remove(this.removalCursor);
 
-        if (this.removalBox) {
-            if (this.removalBox.geometry) {
-                this.removalBox.geometry.dispose();
-            }
-            if (this.removalBox.material) {
-                this.removalBox.material.dispose();
-            }
-            this.scene.remove(this.removalBox);
+        this._disposeObject(this.removalBox);
+        this.scene.remove(this.removalBox);
+    }
+
+    /**
+     * Dispose geometry and materials on a mesh or group
+     */
+    _disposeObject(object) {
+        if (!object) {
+            return;
         }
+        object.traverse((child) => {
+            if (child.geometry) {
+                child.geometry.dispose();
+            }
+            if (child.material) {
+                child.material.dispose();
+            }
+        });
     }
 }

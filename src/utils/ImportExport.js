@@ -13,6 +13,10 @@
  * @license MIT
  */
 
+import { get, set, del } from 'idb-keyval';
+
+const AUTOSAVE_KEY = 'little-cubes-autosave';
+
 /**
  * ImportExport - Handle world save/load functionality
  * @class ImportExport
@@ -71,5 +75,74 @@ export class ImportExport {
      */
     static validateWorldData(data) {
         return data && data.version && data.world && data.world.seed !== undefined;
+    }
+
+    /**
+     * Save world JSON to IndexedDB, with localStorage as a sync fallback
+     */
+    static async saveToBrowser(world, player) {
+        const json = this.exportWorld(world, player);
+
+        try {
+            localStorage.setItem(AUTOSAVE_KEY, json);
+        } catch (error) {
+            console.warn('localStorage autosave failed:', error);
+        }
+
+        try {
+            await set(AUTOSAVE_KEY, json);
+        } catch (error) {
+            console.warn('IndexedDB autosave failed:', error);
+        }
+    }
+
+    /**
+     * Load the last browser autosave, or null if none
+     */
+    static async loadFromBrowser() {
+        try {
+            const fromIdb = await get(AUTOSAVE_KEY);
+            if (fromIdb) {
+                return this.parseWorldData(fromIdb);
+            }
+        } catch (error) {
+            console.warn('IndexedDB autosave read failed:', error);
+        }
+
+        try {
+            const fromLocal = localStorage.getItem(AUTOSAVE_KEY);
+            if (fromLocal) {
+                return this.parseWorldData(fromLocal);
+            }
+        } catch (error) {
+            console.warn('localStorage autosave read failed:', error);
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a browser autosave exists
+     */
+    static async hasBrowserSave() {
+        const data = await this.loadFromBrowser();
+        return Boolean(data);
+    }
+
+    /**
+     * Remove the browser autosave
+     */
+    static async clearBrowserSave() {
+        try {
+            localStorage.removeItem(AUTOSAVE_KEY);
+        } catch {
+            // Quota or file:// restrictions
+        }
+
+        try {
+            await del(AUTOSAVE_KEY);
+        } catch {
+            // IndexedDB unavailable
+        }
     }
 }
